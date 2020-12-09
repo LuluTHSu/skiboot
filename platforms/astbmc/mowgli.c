@@ -51,6 +51,21 @@ static void vpd_dt_fixup(void)
 	}
 }
 
+static void phb0_fixup(void)
+{
+	struct dt_node *stk;
+	u32 phb_index;
+
+	/* Limit PHB0/(pec0) to gen3 speed */
+	dt_for_each_compatible(dt_root, stk, "ibm,power9-phb-stack") {
+		phb_index = dt_prop_get_u32_def(stk, "ibm,phb-index", -1);
+		if (phb_index == 0) {
+			dt_check_del_prop(stk, "ibm,max-link-speed");
+			dt_add_property_cells(stk, "ibm,max-link-speed", 3);
+		}
+	}
+}
+
 static bool mowgli_probe(void)
 {
 	if (!dt_node_is_compatible(dt_root, "ibm,mowgli"))
@@ -65,6 +80,7 @@ static bool mowgli_probe(void)
 	vpd_dt_fixup();
 
 	slot_table_init(mowgli_phb_table);
+	phb0_fixup();
 
 	return true;
 }
@@ -73,18 +89,6 @@ static int mowgli_secvar_init(void)
 	return secvar_main(secboot_tpm_driver, edk2_compatible_v1);
 }
 
-/*
- * Limit PHB0/(pec0) to gen3 speeds.
- */
-static void mowgli_setup_phb(struct phb *phb, unsigned int __unused index)
-{
-	struct phb4 *p = phb_to_phb4(phb);
-
- 	if (p->pec == 0) {
-		phb4_set_dt_max_link_speed(p, 3);
-		prlog(PR_DEBUG, "Mowgli: Force the PHB%d Speed to Gen3.\n", p->pec);
-	} 
-}
 
 DECLARE_PLATFORM(mowgli) = {
 	.name			= "Mowgli",
@@ -95,7 +99,6 @@ DECLARE_PLATFORM(mowgli) = {
 	.bmc			= &bmc_plat_ast2500_openbmc,
 	.pci_get_slot_info	= slot_table_get_slot_info,
 	.pci_probe_complete	= check_all_slot_table,
-	.pci_setup_phb 		= mowgli_setup_phb,
 	.cec_power_down         = astbmc_ipmi_power_down,
 	.cec_reboot             = astbmc_ipmi_reboot,
 	.elog_commit		= ipmi_elog_commit,
